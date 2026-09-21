@@ -13,4 +13,4 @@ COPY app/ ./app/
 
 EXPOSE 7860
 
-CMD ["streamlit", "run", "app/app.py", "--server.address=0.0.0.0", "--server.port=7860"]
+CMD ["streamlit", "run", "app/app.py", "--server.address=0.0.0.0"]
