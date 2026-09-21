@@ -144,6 +144,11 @@ A production model release should include:
 - A version or revision that the application can pin.
 - A small inference example and the expected feature schema.
 
+The model artifact and the complete [model card](model/README.md) are published
+in the Hugging Face model repository. The card documents intended use,
+training-data provenance, preprocessing, all 18 input features, evaluation
+metrics, inference, deployment, and known limitations.
+
 Hugging Face is used here as a versioned **model registry and artifact source**.
 It does not run the Docker container. Promotion should remain deliberate: only
 a run that satisfies agreed evaluation thresholds should move from MLflow to
@@ -287,18 +292,37 @@ the model run, training data, and code that produced it.
 
 ## Delivery Roadmap
 
-- [x] Explore and clean the raw dataset.
-- [x] Produce a reproducible stratified train/test split.
-- [x] Publish processed data to Hugging Face.
-- [x] Build a reusable preprocessing and model pipeline.
-- [x] Compare baseline and tuned runs with MLflow.
-- [x] Publish the selected pipeline to Hugging Face.
-- [x] Build the Streamlit prediction interface.
-- [x] Package the application with Docker.
-- [x] Automate deployment and health verification with Jenkins.
-- [ ] Define explicit model promotion criteria.
-- [ ] Add a model card and versioned inference schema.
-- [ ] Add automated data, training, and inference tests.
+### Completion Audit
+
+| Deliverable | Status | Evidence |
+|---|---|---|
+| Explore, clean, and split the dataset | Complete | [Data preparation notebook](notebooks/01_data_preparation.ipynb) and `data/` splits |
+| Version processed data | Complete | Hugging Face dataset repository |
+| Train, tune, and compare models | Complete | [Experimentation notebook](notebooks/02_model_experimentation.ipynb) and MLflow runs |
+| Select and publish the model | Complete | Gradient Boosting pipeline published as `wellness_tourism_model.skops` |
+| Build the prediction interface | Complete | [Streamlit application](app/app.py) |
+| Package the application | Complete | [Dockerfile](Dockerfile) |
+| Automate deployment | Complete | [Jenkins pipeline](Jenkinsfile) builds, replaces, and health-checks the container |
+| Define a repeatable promotion gate | Remaining | F1 is the selection metric, but minimum acceptance thresholds are not codified |
+| Publish model documentation | Complete | The [model card](model/README.md) is published as `README.md` in the Hugging Face model repository |
+| Version the inference schema | Remaining | The model expects 18 named features, but no versioned schema artifact exists |
+| Automate quality checks | Remaining | `tests/` exists but contains no data, model, or inference tests |
+
+### Remaining Work
+
+1. **Codify promotion criteria.** Define minimum test thresholds such as F1,
+	recall, and ROC-AUC, then make the training or CI pipeline fail when a
+	candidate does not satisfy them.
+2. **Version the input contract.** Add a machine-readable schema containing the
+	18 feature names, data types, allowed categorical values, target definition,
+	and a schema version. Pin the application to the matching model revision.
+3. **Add automated tests.** Cover processed-data columns and target values,
+	model loading and expected features, valid prediction/probability output,
+	and the Streamlit health endpoint. Run these checks in Jenkins before the
+	Docker deployment stage.
+
+The Streamlit interface, Docker image, Jenkins deployment, and model publication
+are already complete. They should not be treated as outstanding roadmap items.
 
 ## Outcome
 
