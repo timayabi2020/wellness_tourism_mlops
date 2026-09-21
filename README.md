@@ -161,9 +161,11 @@ with Docker access:
 
 1. Check out the repository from source control.
 2. Build `wellness-tourism-app:${BUILD_NUMBER}` from the [Dockerfile](Dockerfile).
-3. Stop and remove the previous `wellness-tourism-app` container if it exists.
-4. Start the new container with `--restart unless-stopped` and publish port `7860`.
-5. Call `/_stcore/health`; fail the build if Streamlit is not healthy.
+3. Run promotion-gate tests and evaluate the candidate on the fixed test split.
+4. Archive the machine-readable promotion report.
+5. Stop and remove the previous container only after the gate passes.
+6. Start the new container with `--restart unless-stopped` and publish port `7860`.
+7. Call `/_stcore/health`; fail the build if Streamlit is not healthy.
 
 ```mermaid
 sequenceDiagram
@@ -175,6 +177,7 @@ sequenceDiagram
 
 	Jenkins->>Git: Checkout source
 	Jenkins->>Docker: Build image with BUILD_NUMBER
+	Jenkins->>Docker: Test and evaluate promotion policy
 	Jenkins->>Docker: Replace running container
 	Docker->>App: Start on port 7860
 	App->>HF: Download versioned .skops model
@@ -184,6 +187,35 @@ sequenceDiagram
 
 This replaces paid Docker hosting on Hugging Face. Jenkins controls deployment
 on the configured host, while Hugging Face continues to serve the model artifact.
+
+#### Promotion Gate
+
+The versioned policy in
+[config/promotion_criteria.json](config/promotion_criteria.json) requires:
+
+| Check | Requirement |
+|---|---:|
+| Accuracy | At least 0.90 |
+| Precision | At least 0.85 |
+| Recall | At least 0.65 |
+| F1 | At least 0.75 |
+| ROC-AUC | At least 0.90 |
+| F1 regression | No more than 0.01 below the incumbent |
+
+[src/check_promotion.py](src/check_promotion.py) loads the candidate artifact,
+validates its serialized types and ordered 18-feature contract, recomputes all
+metrics from `data/test.csv`, and exits with a nonzero status on any failure.
+Jenkins runs this check before stopping the current container, so a rejected
+candidate leaves the healthy deployment untouched.
+
+Run the same decision locally:
+
+```bash
+.venv/bin/python src/check_promotion.py
+```
+
+The command writes `promotion_report.json`; Jenkins archives this report with
+the build for traceability.
 
 ### 8. Streamlit Application
 
@@ -206,6 +238,8 @@ typed numeric fields and predefined categorical options.
 wellness_tourism_mlops/
 ├── app/
 │   └── app.py                    # Streamlit prediction interface
+├── config/
+│   └── promotion_criteria.json   # Versioned acceptance policy
 ├── data/
 │   ├── train.csv                 # Local processed training split
 │   └── test.csv                  # Local processed test split
@@ -216,8 +250,10 @@ wellness_tourism_mlops/
 ├── Dockerfile                    # Streamlit runtime image
 ├── Jenkinsfile                   # Build, deploy, and health-check pipeline
 ├── requirements.txt              # Pinned Python dependencies
-├── src/                          # Reusable training/inference code (planned)
-├── tests/                        # Automated checks (planned)
+├── src/
+│   └── check_promotion.py        # Deterministic model gate
+├── tests/
+│   └── test_promotion_gate.py    # Pass and rejection regression tests
 └── README.md
 ```
 
@@ -303,20 +339,17 @@ the model run, training data, and code that produced it.
 | Build the prediction interface | Complete | [Streamlit application](app/app.py) |
 | Package the application | Complete | [Dockerfile](Dockerfile) |
 | Automate deployment | Complete | [Jenkins pipeline](Jenkinsfile) builds, replaces, and health-checks the container |
-| Define a repeatable promotion gate | Remaining | F1 is the selection metric, but minimum acceptance thresholds are not codified |
+| Define a repeatable promotion gate | Complete | [Versioned policy](config/promotion_criteria.json), [evaluator](src/check_promotion.py), tests, and Jenkins blocking stage |
 | Publish model documentation | Complete | The [model card](model/README.md) is published as `README.md` in the Hugging Face model repository |
 | Version the inference schema | Remaining | The model expects 18 named features, but no versioned schema artifact exists |
-| Automate quality checks | Remaining | `tests/` exists but contains no data, model, or inference tests |
+| Automate quality checks | Partial | Promotion behavior is tested; broader data, model, and application tests remain |
 
 ### Remaining Work
 
-1. **Codify promotion criteria.** Define minimum test thresholds such as F1,
-	recall, and ROC-AUC, then make the training or CI pipeline fail when a
-	candidate does not satisfy them.
-2. **Version the input contract.** Add a machine-readable schema containing the
+1. **Version the input contract.** Add a machine-readable schema containing the
 	18 feature names, data types, allowed categorical values, target definition,
 	and a schema version. Pin the application to the matching model revision.
-3. **Add automated tests.** Cover processed-data columns and target values,
+2. **Expand automated tests.** Cover processed-data columns and target values,
 	model loading and expected features, valid prediction/probability output,
 	and the Streamlit health endpoint. Run these checks in Jenkins before the
 	Docker deployment stage.

@@ -24,6 +24,26 @@ pipeline {
             }
         }
 
+        stage('Model Promotion Gate') {
+            steps {
+                sh '''
+                    docker run --rm \
+                        -v "${WORKSPACE}:/workspace" \
+                        -w /workspace \
+                        ${IMAGE_NAME}:${BUILD_NUMBER} \
+                        python -m unittest discover -s tests -p 'test_*.py' -v
+
+                    docker run --rm \
+                        -v "${WORKSPACE}:/workspace" \
+                        -w /workspace \
+                        ${IMAGE_NAME}:${BUILD_NUMBER} \
+                        python src/check_promotion.py \
+                        --report /tmp/promotion_report.json \
+                        > promotion_report.json
+                '''
+            }
+        }
+
         stage('Stop Existing Container') {
             steps {
                 sh '''
@@ -56,6 +76,14 @@ pipeline {
     }
 
     post {
+        always {
+            archiveArtifacts(
+                artifacts: 'promotion_report.json',
+                allowEmptyArchive: true,
+                fingerprint: true
+            )
+        }
+
         success {
             echo 'Wellness Tourism application deployed successfully.'
         }

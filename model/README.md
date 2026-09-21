@@ -139,6 +139,25 @@ Metrics below were calculated once on the held-out test split.
 The default classifier threshold was used. These results describe this test
 split and may not transfer unchanged to new populations or later time periods.
 
+## Promotion Policy
+
+Deployment is blocked unless the candidate passes the versioned policy below
+on the fixed test split:
+
+| Check | Requirement | Current model |
+|---|---:|---:|
+| Accuracy | At least 0.90 | 0.9274 |
+| Precision | At least 0.85 | 0.9160 |
+| Recall | At least 0.65 | 0.6855 |
+| F1 | At least 0.75 | 0.7842 |
+| ROC-AUC | At least 0.90 | 0.9495 |
+| F1 regression | No more than 0.01 below incumbent | Pass |
+
+The gate also requires the expected ordered 18-feature schema and rejects
+unexpected serialized types. Jenkins runs the evaluator and its rejection
+tests before replacing the deployed container, then archives the JSON decision
+report with the build.
+
 ## Inference
 
 Install compatible runtime packages:
