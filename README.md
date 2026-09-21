@@ -359,17 +359,10 @@ the model run, training data, and code that produced it.
 | Define a repeatable promotion gate | Complete | [Versioned policy](config/promotion_criteria.json), [evaluator](src/check_promotion.py), tests, and Jenkins blocking stage |
 | Publish model documentation | Complete | The [model card](model/README.md) is published as `README.md` in the Hugging Face model repository |
 | Version the inference schema | Complete | [Schema 1.0.0](schema/inference_schema.v1.json) is enforced by promotion and serving |
-| Automate quality checks | Partial | Promotion behavior is tested; broader data, model, and application tests remain |
+| Automate quality checks | Complete | Successful Jenkins builds run the automated test suite and blocking model promotion gate, archive `promotion_report.json`, and verify deployment health |
 
-### Remaining Work
-
-1. **Expand automated tests.** Cover processed-data columns and target values,
-	model loading and expected features, valid prediction/probability output,
-	and the Streamlit health endpoint. Run these checks in Jenkins before the
-	Docker deployment stage.
-
-The Streamlit interface, Docker image, Jenkins deployment, and model publication
-are already complete. They should not be treated as outstanding roadmap items.
+The Streamlit interface, Docker image, automated quality checks, Jenkins
+deployment, and model publication are complete.
 
 ## Outcome
 
