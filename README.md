@@ -203,10 +203,11 @@ The versioned policy in
 | F1 regression | No more than 0.01 below the incumbent |
 
 [src/check_promotion.py](src/check_promotion.py) loads the candidate artifact,
-validates its serialized types and ordered 18-feature contract, recomputes all
-metrics from `data/test.csv`, and exits with a nonzero status on any failure.
-Jenkins runs this check before stopping the current container, so a rejected
-candidate leaves the healthy deployment untouched.
+validates its serialized types, schema version, ordered features, and test-data
+values against [schema/inference_schema.v1.json](schema/inference_schema.v1.json),
+recomputes all metrics from `data/test.csv`, and exits with a nonzero status on
+any failure. Jenkins runs this check before stopping the current container, so
+a rejected candidate leaves the healthy deployment untouched.
 
 Run the same decision locally:
 
@@ -230,7 +231,21 @@ Customer inputs → schema validation → pipeline.predict_proba()
 
 The published pipeline performs the same preprocessing used during training,
 preventing training-serving skew. Streamlit constrains required inputs through
-typed numeric fields and predefined categorical options.
+typed numeric fields and predefined categorical options, validates each request
+against schema `1.0.0`, and refuses to start if model feature names differ.
+
+### Inference Schema Versioning
+
+[schema/inference_schema.v1.json](schema/inference_schema.v1.json) is the
+machine-readable source of truth for the 18 request fields, types, ranges,
+categorical values, target metadata, and unknown-field policy. The promotion
+policy pins schema version `1.0.0`, the gate records that version in its report,
+and the Docker image packages the same file used by Streamlit.
+
+Use semantic versioning for contract changes: patch for documentation-only
+clarifications, minor for backward-compatible additions, and major for removed
+or renamed fields, narrowed values, or type changes. A model and application
+must pass the promotion gate against the same schema version before deployment.
 
 ## Repository Map
 
@@ -250,6 +265,8 @@ wellness_tourism_mlops/
 ├── Dockerfile                    # Streamlit runtime image
 ├── Jenkinsfile                   # Build, deploy, and health-check pipeline
 ├── requirements.txt              # Pinned Python dependencies
+├── schema/
+│   └── inference_schema.v1.json  # Versioned inference request contract
 ├── src/
 │   └── check_promotion.py        # Deterministic model gate
 ├── tests/
@@ -341,15 +358,12 @@ the model run, training data, and code that produced it.
 | Automate deployment | Complete | [Jenkins pipeline](Jenkinsfile) builds, replaces, and health-checks the container |
 | Define a repeatable promotion gate | Complete | [Versioned policy](config/promotion_criteria.json), [evaluator](src/check_promotion.py), tests, and Jenkins blocking stage |
 | Publish model documentation | Complete | The [model card](model/README.md) is published as `README.md` in the Hugging Face model repository |
-| Version the inference schema | Remaining | The model expects 18 named features, but no versioned schema artifact exists |
+| Version the inference schema | Complete | [Schema 1.0.0](schema/inference_schema.v1.json) is enforced by promotion and serving |
 | Automate quality checks | Partial | Promotion behavior is tested; broader data, model, and application tests remain |
 
 ### Remaining Work
 
-1. **Version the input contract.** Add a machine-readable schema containing the
-	18 feature names, data types, allowed categorical values, target definition,
-	and a schema version. Pin the application to the matching model revision.
-2. **Expand automated tests.** Cover processed-data columns and target values,
+1. **Expand automated tests.** Cover processed-data columns and target values,
 	model loading and expected features, valid prediction/probability output,
 	and the Streamlit health endpoint. Run these checks in Jenkins before the
 	Docker deployment stage.

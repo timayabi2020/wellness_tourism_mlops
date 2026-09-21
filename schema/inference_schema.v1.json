@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://huggingface.co/motidev/wellness-tourism-model/resolve/main/inference_schema.v1.json",
+  "title": "Wellness Tourism Purchase Prediction Request",
+  "description": "Versioned input contract for one customer prediction.",
+  "x-schema-version": "1.0.0",
+  "x-target": {
+    "name": "ProdTaken",
+    "type": "integer",
+    "classes": [0, 1],
+    "positive_class": 1
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "Age",
+    "TypeofContact",
+    "CityTier",
+    "DurationOfPitch",
+    "Occupation",
+    "Gender",
+    "NumberOfPersonVisiting",
+    "NumberOfFollowups",
+    "ProductPitched",
+    "PreferredPropertyStar",
+    "MaritalStatus",
+    "NumberOfTrips",
+    "Passport",
+    "PitchSatisfactionScore",
+    "OwnCar",
+    "NumberOfChildrenVisiting",
+    "Designation",
+    "MonthlyIncome"
+  ],
+  "properties": {
+    "Age": {
+      "type": "integer",
+      "minimum": 18,
+      "maximum": 100,
+      "description": "Customer age in years."
+    },
+    "TypeofContact": {
+      "type": "string",
+      "enum": ["Self Enquiry", "Company Invited"],
+      "description": "How the customer entered the sales process."
+    },
+    "CityTier": {
+      "type": "integer",
+      "enum": [1, 2, 3],
+      "description": "Customer city tier."
+    },
+    "DurationOfPitch": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Sales pitch duration in minutes."
+    },
+    "Occupation": {
+      "type": "string",
+      "enum": ["Salaried", "Small Business", "Free Lancer", "Large Business"],
+      "description": "Customer occupation category."
+    },
+    "Gender": {
+      "type": "string",
+      "enum": ["Male", "Female", "Fe Male"],
+      "description": "Gender values accepted by the model, including the legacy Fe Male label."
+    },
+    "NumberOfPersonVisiting": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Total number of travelers."
+    },
+    "NumberOfFollowups": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of sales follow-ups."
+    },
+    "ProductPitched": {
+      "type": "string",
+      "enum": ["Basic", "Standard", "Deluxe", "Super Deluxe", "King"],
+      "description": "Wellness package offered to the customer."
+    },
+    "PreferredPropertyStar": {
+      "type": "integer",
+      "enum": [3, 4, 5],
+      "description": "Preferred hotel star rating."
+    },
+    "MaritalStatus": {
+      "type": "string",
+      "enum": ["Single", "Married", "Divorced", "Unmarried"],
+      "description": "Customer marital-status category."
+    },
+    "NumberOfTrips": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of trips taken per year."
+    },
+    "Passport": {
+      "type": "integer",
+      "enum": [0, 1],
+      "description": "Whether the customer has a passport."
+    },
+    "PitchSatisfactionScore": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Customer satisfaction with the sales pitch."
+    },
+    "OwnCar": {
+      "type": "integer",
+      "enum": [0, 1],
+      "description": "Whether the customer owns a car."
+    },
+    "NumberOfChildrenVisiting": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of children traveling."
+    },
+    "Designation": {
+      "type": "string",
+      "enum": ["Executive", "Manager", "Senior Manager", "AVP", "VP"],
+      "description": "Customer job seniority."
+    },
+    "MonthlyIncome": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Customer monthly income."
+    }
+  }
+}

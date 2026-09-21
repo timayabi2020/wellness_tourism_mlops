@@ -89,8 +89,11 @@ inference use the same transformations.
 
 ## Input Schema
 
-The model expects a pandas DataFrame with these 18 columns. Column names are
-case-sensitive.
+The model uses inference schema `1.0.0`, published as
+[`inference_schema.v1.json`](https://huggingface.co/motidev/wellness-tourism-model/blob/main/inference_schema.v1.json).
+This machine-readable JSON Schema defines required fields, types, ranges,
+categorical values, target metadata, and rejection of unknown fields. The model
+expects a pandas DataFrame with these 18 case-sensitive columns in schema order.
 
 | Feature | Type | Description / observed values |
 |---|---|---|
@@ -153,10 +156,11 @@ on the fixed test split:
 | ROC-AUC | At least 0.90 | 0.9495 |
 | F1 regression | No more than 0.01 below incumbent | Pass |
 
-The gate also requires the expected ordered 18-feature schema and rejects
-unexpected serialized types. Jenkins runs the evaluator and its rejection
-tests before replacing the deployed container, then archives the JSON decision
-report with the build.
+The gate pins inference schema `1.0.0`, validates the schema version, ordered
+model and test-data features, and every test value. It also rejects unexpected
+serialized types. Jenkins runs the evaluator and its rejection tests before
+replacing the deployed container, then archives the JSON decision report with
+the build.
 
 ## Inference
 

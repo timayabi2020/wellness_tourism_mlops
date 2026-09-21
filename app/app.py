@@ -1,8 +1,12 @@
+import json
+from pathlib import Path
+
 import pandas as pd
 import skops.io as sio
 import streamlit as st
 
 from huggingface_hub import hf_hub_download
+from jsonschema import Draft202012Validator
 
 
 st.set_page_config(
@@ -15,6 +19,14 @@ st.set_page_config(
 # Pin the Hugging Face repository and artifact used for inference.
 MODEL_REPO = "motidev/wellness-tourism-model"
 MODEL_FILE = "wellness_tourism_model.skops"
+SCHEMA_FILE = Path(__file__).parents[1] / "schema" / "inference_schema.v1.json"
+
+with SCHEMA_FILE.open(encoding="utf-8") as schema_file:
+    INFERENCE_SCHEMA = json.load(schema_file)
+
+Draft202012Validator.check_schema(INFERENCE_SCHEMA)
+SCHEMA_VALIDATOR = Draft202012Validator(INFERENCE_SCHEMA)
+SCHEMA_VERSION = INFERENCE_SCHEMA["x-schema-version"]
 
 
 @st.cache_resource
@@ -260,6 +272,10 @@ st.markdown(
 
 model = load_model()
 
+if list(model.feature_names_in_) != INFERENCE_SCHEMA["required"]:
+    st.error("The deployed model is incompatible with the inference schema.")
+    st.stop()
+
 brand_column, form_column = st.columns([0.82, 1.18], gap="large")
 
 with brand_column:
@@ -277,7 +293,7 @@ with brand_column:
         <div class="trust-row">
             <div><strong>18</strong><span>customer signals</span></div>
             <div><strong>1 click</strong><span>to score intent</span></div>
-            <div><strong>Live</strong><span>hosted model</span></div>
+            <div><strong>v{SCHEMA_VERSION}</strong><span>inference schema</span></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -371,27 +387,33 @@ with form_column:
         )
 
     if submitted:
-        # Match the feature names and types expected by the published sklearn pipeline.
-        input_data = pd.DataFrame({
-            "Age": [age],
-            "TypeofContact": [type_of_contact],
-            "CityTier": [city_tier],
-            "DurationOfPitch": [duration_of_pitch],
-            "Occupation": [occupation],
-            "Gender": [gender],
-            "NumberOfPersonVisiting": [number_of_persons],
-            "NumberOfFollowups": [number_of_followups],
-            "ProductPitched": [product_pitched],
-            "PreferredPropertyStar": [preferred_property_star],
-            "MaritalStatus": [marital_status],
-            "NumberOfTrips": [number_of_trips],
-            "Passport": [passport],
-            "PitchSatisfactionScore": [pitch_satisfaction_score],
-            "OwnCar": [own_car],
-            "NumberOfChildrenVisiting": [number_of_children],
-            "Designation": [designation],
-            "MonthlyIncome": [monthly_income],
-        })
+        payload = {
+            "Age": age,
+            "TypeofContact": type_of_contact,
+            "CityTier": city_tier,
+            "DurationOfPitch": duration_of_pitch,
+            "Occupation": occupation,
+            "Gender": gender,
+            "NumberOfPersonVisiting": number_of_persons,
+            "NumberOfFollowups": number_of_followups,
+            "ProductPitched": product_pitched,
+            "PreferredPropertyStar": preferred_property_star,
+            "MaritalStatus": marital_status,
+            "NumberOfTrips": number_of_trips,
+            "Passport": passport,
+            "PitchSatisfactionScore": pitch_satisfaction_score,
+            "OwnCar": own_car,
+            "NumberOfChildrenVisiting": number_of_children,
+            "Designation": designation,
+            "MonthlyIncome": monthly_income,
+        }
+
+        errors = sorted(SCHEMA_VALIDATOR.iter_errors(payload), key=lambda error: list(error.path))
+        if errors:
+            st.error(f"Input does not satisfy schema v{SCHEMA_VERSION}: {errors[0].message}")
+            st.stop()
+
+        input_data = pd.DataFrame([payload], columns=INFERENCE_SCHEMA["required"])
 
         # Return both the binary decision and positive-class purchase probability.
         prediction = model.predict(input_data)[0]

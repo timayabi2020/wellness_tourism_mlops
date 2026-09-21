@@ -2,6 +2,10 @@
   "policy_version": "1.0.0",
   "target_column": "ProdTaken",
   "positive_class": 1,
+  "inference_schema": {
+    "path": "schema/inference_schema.v1.json",
+    "version": "1.0.0"
+  },
   "minimum_metrics": {
     "accuracy": 0.90,
     "precision": 0.85,
@@ -14,25 +18,5 @@
   },
   "maximum_regression": {
     "f1": 0.01
-  },
-  "required_features": [
-    "Age",
-    "TypeofContact",
-    "CityTier",
-    "DurationOfPitch",
-    "Occupation",
-    "Gender",
-    "NumberOfPersonVisiting",
-    "NumberOfFollowups",
-    "ProductPitched",
-    "PreferredPropertyStar",
-    "MaritalStatus",
-    "NumberOfTrips",
-    "Passport",
-    "PitchSatisfactionScore",
-    "OwnCar",
-    "NumberOfChildrenVisiting",
-    "Designation",
-    "MonthlyIncome"
-  ]
+  }
 }

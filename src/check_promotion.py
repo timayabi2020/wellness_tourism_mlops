@@ -5,6 +5,7 @@ from typing import Any
 
 import pandas as pd
 import skops.io as sio
+from jsonschema import Draft202012Validator
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
@@ -26,10 +27,34 @@ def validate_contract(
     model: Any,
     test_data: pd.DataFrame,
     criteria: dict[str, Any],
+    inference_schema: dict[str, Any],
 ) -> list[str]:
     failures: list[str] = []
     target_column = criteria["target_column"]
-    required_features = criteria["required_features"]
+    schema_reference = criteria["inference_schema"]
+    required_features = inference_schema["required"]
+
+    try:
+        Draft202012Validator.check_schema(inference_schema)
+    except Exception as error:
+        return [f"Inference schema is invalid: {error}"]
+
+    if inference_schema.get("x-schema-version") != schema_reference["version"]:
+        failures.append(
+            "Inference schema version does not match the promotion policy."
+        )
+
+    schema_target = inference_schema.get("x-target", {})
+    if (
+        schema_target.get("name") != target_column
+        or schema_target.get("positive_class") != criteria["positive_class"]
+    ):
+        failures.append("Inference schema target metadata does not match the policy.")
+
+    if list(inference_schema.get("properties", {})) != required_features:
+        failures.append(
+            "Inference schema properties do not match its ordered required features."
+        )
 
     if target_column not in test_data.columns:
         return [f"Missing target column: {target_column}"]
@@ -39,6 +64,19 @@ def validate_contract(
         failures.append(
             "Test-data features do not match the required ordered schema."
         )
+    else:
+        validator = Draft202012Validator(inference_schema)
+        records = json.loads(test_data[required_features].to_json(orient="records"))
+        for row_index, record in enumerate(records):
+            error = next(validator.iter_errors(record), None)
+            if error is not None:
+                field = ".".join(str(part) for part in error.absolute_path)
+                location = f" field '{field}'" if field else ""
+                failures.append(
+                    f"Test-data row {row_index}{location} violates inference schema: "
+                    f"{error.message}"
+                )
+                break
 
     model_features = getattr(model, "feature_names_in_", None)
     if model_features is None or list(model_features) != required_features:
@@ -83,8 +121,11 @@ def evaluate_promotion(
     model_path: Path,
     test_data_path: Path,
     criteria_path: Path,
+    schema_path: Path | None = None,
 ) -> dict[str, Any]:
     criteria = load_json(criteria_path)
+    schema_reference = criteria["inference_schema"]
+    inference_schema = load_json(schema_path or Path(schema_reference["path"]))
     unknown_types = sio.get_untrusted_types(file=model_path)
     unexpected_types = sorted(set(unknown_types) - set(TRUSTED_MODEL_TYPES))
     failures = (
@@ -95,7 +136,9 @@ def evaluate_promotion(
 
     model = sio.load(model_path, trusted=TRUSTED_MODEL_TYPES)
     test_data = pd.read_csv(test_data_path)
-    failures.extend(validate_contract(model, test_data, criteria))
+    failures.extend(
+        validate_contract(model, test_data, criteria, inference_schema)
+    )
 
     metrics: dict[str, float] = {}
     checks: dict[str, dict[str, Any]] = {}
@@ -141,6 +184,7 @@ def evaluate_promotion(
 
     return {
         "policy_version": criteria["policy_version"],
+        "schema_version": inference_schema.get("x-schema-version"),
         "passed": not failures,
         "metrics": metrics,
         "checks": checks,
@@ -168,6 +212,11 @@ def parse_args() -> argparse.Namespace:
         default=Path("config/promotion_criteria.json"),
     )
     parser.add_argument(
+        "--schema",
+        type=Path,
+        help="Override the inference schema path referenced by the policy.",
+    )
+    parser.add_argument(
         "--report",
         type=Path,
         default=Path("promotion_report.json"),
@@ -177,7 +226,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    report = evaluate_promotion(args.model, args.test_data, args.criteria)
+    report = evaluate_promotion(
+        args.model,
+        args.test_data,
+        args.criteria,
+        args.schema,
+    )
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
     return 0 if report["passed"] else 1

@@ -10,6 +10,7 @@ RUN python --version && \
     pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
+COPY schema/ ./schema/
 
 EXPOSE 7860
 
