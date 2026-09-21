@@ -5,9 +5,10 @@ purchase a wellness tourism package. The project turns raw customer data into
 a reproducible training workflow and, ultimately, an interactive prediction
 application.
 
-> **Current scope:** data preparation, dataset versioning, model training,
-> tuning, evaluation, and local MLflow experiment tracking are implemented.
-> Model publication and the Streamlit application are the next delivery stages.
+> **Current scope:** the complete path from data preparation to a containerized
+> Streamlit application is implemented. Hugging Face stores the versioned data
+> and model artifact; Jenkins builds, deploys, and verifies the application
+> container without relying on paid Hugging Face Docker hosting.
 
 ## Architecture at a Glance
 
@@ -18,21 +19,25 @@ flowchart LR
 	C --> D["4. Train and tune<br/>sklearn Pipeline"]
 	D --> E["5. Track experiments<br/>MLflow"]
 	E --> F["6. Publish model<br/>Hugging Face Hub"]
-	F --> G["7. Serve predictions<br/>Streamlit"]
 
-	classDef done fill:#e7f7ef,stroke:#159570,color:#102a25;
-	classDef active fill:#fff4d6,stroke:#e5a000,color:#332500;
-	classDef planned fill:#eef3f8,stroke:#7290ad,color:#23384d,stroke-dasharray: 5 5;
-	class A,B,C,D,E done;
-	class F active;
-	class G planned;
+	G["Git repository<br/>App + Dockerfile"] --> H["7. Jenkins pipeline<br/>Build, deploy, verify"]
+	H --> I["8. Docker container<br/>Streamlit :7860"]
+	F -->|Download .skops model| I
+	I --> J["Customer<br/>Prediction + probability"]
+
+	classDef data fill:#e7f7ef,stroke:#159570,color:#102a25;
+	classDef automation fill:#fff4d6,stroke:#d89a00,color:#332500;
+	classDef serving fill:#eaf1f8,stroke:#4c78a8,color:#172b3d;
+	class A,B,C,D,E,F data;
+	class G,H automation;
+	class I,J serving;
 ```
 
 The central design principle is **artifact continuity**: each stage produces a
 versioned or traceable output that becomes the next stage's input. This keeps
 training and inference aligned and makes results easier to reproduce.
 
-## The Seven Stages
+## The Eight Stages
 
 | Stage | Responsibility | Input | Output | Status |
 |---|---|---|---|---|
@@ -41,8 +46,9 @@ training and inference aligned and makes results easier to reproduce.
 | 3. Data versioning | Store reproducible processed datasets | Train/test CSV files | Hugging Face dataset revision | Implemented |
 | 4. Training | Preprocess, train, tune, and evaluate models | Versioned dataset | Fitted sklearn pipeline | Implemented |
 | 5. Experiment tracking | Record parameters, metrics, and artifacts | Training runs | MLflow experiment history | Implemented locally |
-| 6. Model deployment | Publish the selected pipeline and model card | Best MLflow artifact | Versioned Hugging Face model | Planned |
-| 7. Web application | Collect customer details and return a prediction | Published model | Purchase probability and class | Planned |
+| 6. Model registry | Publish the selected pipeline | Best evaluated pipeline | Versioned Hugging Face model | Implemented |
+| 7. Delivery automation | Build, replace, and health-check the service | Git repository | Verified Docker container | Implemented with Jenkins |
+| 8. Web application | Collect customer details and return a prediction | Published model | Purchase probability and class | Implemented with Streamlit |
 
 ### 1. Data Source
 
@@ -123,44 +129,88 @@ From the repository root, open the tracking UI with:
 Then visit <http://127.0.0.1:5000> and compare runs using F1 and ROC-AUC alongside
 precision and recall. Accuracy alone can hide poor minority-class performance.
 
-### 6. Model Deployment
+### 6. Model Registry
 
-The deployment stage will promote the best complete pipeline, not only the
-classifier, to a Hugging Face model repository. A release should include:
+The selected complete pipeline, not only the classifier, is serialized in the
+safer `skops` format and uploaded to the
+[Hugging Face model repository](https://huggingface.co/motidev/wellness-tourism-model).
+The Streamlit application downloads `wellness_tourism_model.skops` from this
+repository when its cached model loader initializes.
+
+A production model release should include:
 
 - The serialized preprocessing and prediction pipeline.
 - A model card describing intended use, inputs, metrics, and limitations.
 - A version or revision that the application can pin.
 - A small inference example and the expected feature schema.
 
-Promotion should be deliberate: only a run that satisfies the agreed evaluation
-thresholds should move from MLflow to the model repository.
+Hugging Face is used here as a versioned **model registry and artifact source**.
+It does not run the Docker container. Promotion should remain deliberate: only
+a run that satisfies agreed evaluation thresholds should move from MLflow to
+the model repository.
 
-### 7. Streamlit Application
+### 7. Jenkins Delivery Pipeline
 
-The final application will collect customer information, load the pinned model
-revision, and return both a purchase decision and its probability. The intended
-request path is:
+[Jenkinsfile](Jenkinsfile) automates application delivery on a Jenkins agent
+with Docker access:
+
+1. Check out the repository from source control.
+2. Build `wellness-tourism-app:${BUILD_NUMBER}` from the [Dockerfile](Dockerfile).
+3. Stop and remove the previous `wellness-tourism-app` container if it exists.
+4. Start the new container with `--restart unless-stopped` and publish port `7860`.
+5. Call `/_stcore/health`; fail the build if Streamlit is not healthy.
+
+```mermaid
+sequenceDiagram
+	participant Git as Git repository
+	participant Jenkins
+	participant Docker as Docker engine
+	participant App as Streamlit container
+	participant HF as Hugging Face Hub
+
+	Jenkins->>Git: Checkout source
+	Jenkins->>Docker: Build image with BUILD_NUMBER
+	Jenkins->>Docker: Replace running container
+	Docker->>App: Start on port 7860
+	App->>HF: Download versioned .skops model
+	Jenkins->>App: GET /_stcore/health
+	App-->>Jenkins: Healthy
+```
+
+This replaces paid Docker hosting on Hugging Face. Jenkins controls deployment
+on the configured host, while Hugging Face continues to serve the model artifact.
+
+### 8. Streamlit Application
+
+The application in [app/app.py](app/app.py) collects customer information,
+loads the published model, and returns both a purchase decision and its
+probability. The request path is:
 
 ```text
 Customer inputs → schema validation → pipeline.predict_proba()
 				→ prediction + probability + interpretation
 ```
 
-The app should reject incomplete or invalid fields clearly and must use the
-published pipeline so that preprocessing remains identical to training.
+The published pipeline performs the same preprocessing used during training,
+preventing training-serving skew. Streamlit constrains required inputs through
+typed numeric fields and predefined categorical options.
 
 ## Repository Map
 
 ```text
 wellness_tourism_mlops/
+├── app/
+│   └── app.py                    # Streamlit prediction interface
 ├── data/
 │   ├── train.csv                 # Local processed training split
 │   └── test.csv                  # Local processed test split
+├── model/                        # Local serialized model artifacts
 ├── notebooks/
 │   ├── 01_data_preparation.ipynb
 │   └── 02_model_experimentation.ipynb
-├── apps/                         # Streamlit application (planned)
+├── Dockerfile                    # Streamlit runtime image
+├── Jenkinsfile                   # Build, deploy, and health-check pipeline
+├── requirements.txt              # Pinned Python dependencies
 ├── src/                          # Reusable training/inference code (planned)
 ├── tests/                        # Automated checks (planned)
 └── README.md
@@ -172,6 +222,8 @@ wellness_tourism_mlops/
 
 - Python 3.10 or newer
 - A Hugging Face account and write token for dataset uploads
+- Docker for containerized application deployment
+- Jenkins with access to the Docker daemon for automated deployment
 
 ### Local setup
 
@@ -195,6 +247,29 @@ Run the notebooks in order:
 Notebook paths are relative to the `notebooks/` directory. Run them from their
 existing location so local data and MLflow paths resolve as documented.
 
+### Run the application locally
+
+```bash
+streamlit run app/app.py
+```
+
+### Run the application with Docker
+
+```bash
+docker build -t wellness-tourism-app:local .
+docker run --rm -p 7860:7860 wellness-tourism-app:local
+```
+
+Open <http://localhost:7860>. The container downloads the published model from
+Hugging Face when the application starts.
+
+### Deploy with Jenkins
+
+Create a Jenkins Pipeline job that uses this repository's `Jenkinsfile`. The
+agent must have Git, Docker, and network access to Hugging Face. Each successful
+build replaces the existing application container and verifies its health on
+port `7860`.
+
 ## Reproducibility Contract
 
 A result is reproducible when these four references are known:
@@ -205,6 +280,7 @@ A result is reproducible when these four references are known:
 | Hugging Face dataset revision | Exact training and test data |
 | MLflow run ID | Parameters, metrics, and fitted artifact |
 | Hugging Face model revision | Exact model used for inference |
+| Jenkins build number | Docker image and deployment execution |
 
 Together, these references create a traceable route from a prediction back to
 the model run, training data, and code that produced it.
@@ -216,14 +292,18 @@ the model run, training data, and code that produced it.
 - [x] Publish processed data to Hugging Face.
 - [x] Build a reusable preprocessing and model pipeline.
 - [x] Compare baseline and tuned runs with MLflow.
-- [ ] Define model promotion criteria and publish the selected model.
+- [x] Publish the selected pipeline to Hugging Face.
+- [x] Build the Streamlit prediction interface.
+- [x] Package the application with Docker.
+- [x] Automate deployment and health verification with Jenkins.
+- [ ] Define explicit model promotion criteria.
 - [ ] Add a model card and versioned inference schema.
-- [ ] Build the Streamlit prediction interface.
 - [ ] Add automated data, training, and inference tests.
 
 ## Outcome
 
 This architecture turns a one-off notebook experiment into a traceable ML
 product: data is versioned, transformations travel with the model, experiments
-remain comparable, and deployment has a clear path from approved run to
-end-user prediction.
+remain comparable, and Jenkins provides a repeatable route from repository
+change to a verified Streamlit container. Hugging Face remains the source of
+versioned model truth without being responsible for paid application hosting.
