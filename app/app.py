@@ -5,18 +5,20 @@ import skops.io as sio
 from huggingface_hub import hf_hub_download
 
 
+# Pin the Hugging Face repository and artifact used for inference.
 MODEL_REPO = "motidev/wellness-tourism-model"
 MODEL_FILE = "wellness_tourism_model.skops"
 
 
 @st.cache_resource
 def load_model():
-
+    # Download once per Streamlit process and reuse the cached fitted pipeline.
     model_path = hf_hub_download(
         repo_id=MODEL_REPO,
         filename=MODEL_FILE
     )
 
+    # Inspect the artifact before explicitly trusting the types required by skops.
     unknown_types = sio.get_untrusted_types(
         file=model_path
     )
@@ -40,6 +42,7 @@ st.write(
 
 st.subheader("Customer Information")
 
+# Collect the same customer features used to train the published pipeline.
 age = st.number_input(
     "Age",
     min_value=18,
@@ -160,6 +163,7 @@ monthly_income = st.number_input(
     value=25000.0
 )
 
+# Build one schema-aligned row; the model pipeline handles imputation and encoding.
 input_data = pd.DataFrame({
     "Age": [age],
     "TypeofContact": [type_of_contact],
@@ -182,9 +186,8 @@ input_data = pd.DataFrame({
 })
 
 if st.button("Predict Purchase"):
-
+    # Return both the binary decision and positive-class purchase probability.
     prediction = model.predict(input_data)[0]
-
     probability = model.predict_proba(input_data)[0][1]
 
     st.subheader("Prediction Result")
@@ -201,5 +204,3 @@ if st.button("Predict Purchase"):
     st.write(
         f"Purchase probability: **{probability:.2%}**"
     )
-
-    model.prepare(input_data)
